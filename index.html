@@ -9,7 +9,7 @@
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { font-family:'Segoe UI',system-ui,sans-serif; background:#E8ECF2; padding:16px; color:#1E293B; }
-.wrap { max-width:740px; margin:0 auto; }
+.wrap { max-width:860px; margin:0 auto; }
 
 .hdr {
   background:#0F172A; border-radius:12px 12px 0 0;
@@ -81,6 +81,13 @@ tr.total-row td { border-top:1px solid #E2E8F0; }
 .b-lo { background:#FEE2E2; color:#B91C1C; }
 .b-md { background:#DBEAFE; color:#1D4ED8; }
 
+input[type=range] { -webkit-appearance:none; width:110px; height:4px; background:#E2E8F0; border-radius:2px; outline:none; cursor:pointer; vertical-align:middle; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:#0F172A; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.25); }
+input[type=range]::-moz-range-thumb { width:15px; height:15px; border-radius:50%; background:#0F172A; cursor:pointer; border:none; }
+.not-val { font-size:13px; font-weight:800; color:#0F172A; min-width:60px; display:inline-block; }
+.avg-chip { font-size:10px; font-weight:700; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:5px; padding:3px 9px; color:#64748B; white-space:nowrap; }
+.avg-chip b { color:#0F172A; }
+.avg-lbl { font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#94A3B8; }
 .note { margin-top:12px; font-size:10.5px; color:#64748B; background:#F8FAFC; border-left:2.5px solid #CBD5E1; border-radius:0 5px 5px 0; padding:7px 10px; line-height:1.5; }
 </style>
 </head>
@@ -92,6 +99,7 @@ tr.total-row td { border-top:1px solid #E2E8F0; }
       <div class="hdr-spot">B.Bogotá <b>3,440</b></div>
       <div class="hdr-spot">BBVA <b>3,430</b></div>
       <div class="hdr-spot">JPM <b>3,425</b></div>
+      <div class="hdr-spot">Bancolombia <b>3,435</b></div>
     </div>
   </div>
 
@@ -110,22 +118,29 @@ tr.total-row td { border-top:1px solid #E2E8F0; }
         <button class="btn on-v" data-v="total" onclick="selV('total')">Costo Total</button>
         <button class="btn"      data-v="prima" onclick="selV('prima')">Sólo Prima</button>
       </div>
+      <div class="vdiv"></div>
+      <span class="ctrl-lbl">Nocional</span>
+      <input type="range" id="notSlider" min="1" max="10" step="0.5" value="1" oninput="setNotional(this.value)">
+      <span class="not-val" id="notVal">USD 1M</span>
     </div>
 
     <div class="legend">
       <div class="leg"><div class="leg-ln" style="background:#DC2626"></div>Banco Bogotá</div>
       <div class="leg"><div class="leg-ln" style="background:#2563EB"></div>BBVA</div>
       <div class="leg"><div class="leg-ln" style="background:#059669"></div>JPMorgan</div>
+      <div class="leg"><div class="leg-ln" style="background:#D97706"></div>Bancolombia</div>
+      <div class="leg"><div class="leg-ln" style="background:#94A3B8;border-top:2px dashed #94A3B8;height:0"></div>Promedio</div>
     </div>
 
+    <div id="avgBar" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-bottom:8px;flex-wrap:wrap;"></div>
     <div class="chart-wrap"><canvas id="ch"></canvas></div>
     <div class="winners" id="winners"></div>
 
     <div class="tbl-sec">Desglose de componentes por plazo</div>
     <table id="tbl">
       <thead><tr>
-        <th style="text-align:left;width:28%">Concepto</th>
-        <th id="th0"></th><th id="th1"></th><th id="th2"></th>
+        <th style="text-align:left;width:24%">Concepto</th>
+        <th id="th0"></th><th id="th1"></th><th id="th2"></th><th id="th3"></th>
       </tr></thead>
       <tbody id="tbody"></tbody>
     </table>
@@ -137,11 +152,28 @@ tr.total-row td { border-top:1px solid #E2E8F0; }
 <script>
 Chart.register(ChartDataLabels);
 
+/* ── NOTIONAL ── */
+let curNotional = 1e6;
+
+function fmtCOP(v) {
+  if (v >= 1e9) return (v / 1e9).toFixed(2) + ' Bn';
+  return (v / 1e6).toFixed(1) + ' M';
+}
+
+function setNotional(raw) {
+  const n = parseFloat(raw);
+  curNotional = n * 1e6;
+  document.getElementById('notVal').textContent =
+    Number.isInteger(n) ? `USD ${n}M` : `USD ${n.toFixed(1)}M`;
+  update();
+}
+
 /* ── DATA ── */
 const BANKS = [
-  { key:'bog',  name:'Banco Bogotá', color:'#DC2626', spot:3440, yr1:1.47671 },
-  { key:'bbva', name:'BBVA',         color:'#2563EB', spot:3430, yr1:1.48219 },
-  { key:'jpm',  name:'JPMorgan',     color:'#059669', spot:3425, yr1:1.47945 }
+  { key:'bog',  name:'Banco Bogotá',  color:'#DC2626', spot:3440, yr1:1.47671 },
+  { key:'bbva', name:'BBVA',          color:'#2563EB', spot:3430, yr1:1.48219 },
+  { key:'jpm',  name:'JPMorgan',      color:'#059669', spot:3425, yr1:1.47945 },
+  { key:'bcol', name:'Bancolombia',   color:'#D97706', spot:3435, yr1:1.48219 }
 ];
 const MATS = [
   { label:'540 días',   yr2:null  },
@@ -149,22 +181,22 @@ const MATS = [
   { label:'1,080 días', yr2:2.95890 }
 ];
 const PRIMA_COP = {
-  'ATM':  { bog:[494.44,584.66,759.52], bbva:[476.42,572.81,727.53], jpm:[452.10,554.85,698.70] },
-  '+5%':  { bog:[399.54,490.59,669.65], bbva:[374.44,468.72,625.55], jpm:[363.05,454.84,607.94] },
-  '+10%': { bog:[319.96,408.26,586.82], bbva:[291.08,379.25,531.87], jpm:[287.70,373.33,528.82] },
-  '+15%': { bog:[255.30,338.43,511.78], bbva:[225.57,305.08,448.96], jpm:[224.34,306.17,452.79] }
+  'ATM':  { bog:[494.44,584.66,759.52], bbva:[476.42,572.81,727.53], jpm:[452.10,554.85,698.70], bcol:[479.33,585.71,760.20] },
+  '+5%':  { bog:[399.54,490.59,669.65], bbva:[374.44,468.72,625.55], jpm:[363.05,454.84,607.94], bcol:[384.96,489.57,671.77] },
+  '+10%': { bog:[319.96,408.26,586.82], bbva:[291.08,379.25,531.87], jpm:[287.70,373.33,528.82], bcol:[307.80,410.41,589.43] },
+  '+15%': { bog:[255.30,338.43,511.78], bbva:[225.57,305.08,448.96], jpm:[224.34,306.17,452.79], bcol:[246.01,341.80,518.71] }
 };
 const OTM_COP = {
-  'ATM':  { bog:0,   bbva:0,     jpm:0      },
-  '+5%':  { bog:172, bbva:171.5, jpm:171.25 },
-  '+10%': { bog:344, bbva:343,   jpm:342.5  },
-  '+15%': { bog:516, bbva:514.5, jpm:513.75 }
+  'ATM':  { bog:0,   bbva:0,     jpm:0,      bcol:0      },
+  '+5%':  { bog:172, bbva:171.5, jpm:171.25, bcol:171.75 },
+  '+10%': { bog:344, bbva:343,   jpm:342.5,  bcol:343.50 },
+  '+15%': { bog:516, bbva:514.5, jpm:513.75, bcol:515.25 }
 };
 const NOTES = {
-  'ATM':  'ATM: la componente OTM = 0, por lo que costo total = prima. Toda la diferencia entre bancos es vol implícita. JPM más barato en todos los plazos.',
-  '+5%':  '+5% OTM: el componente strike se divide en años. A mayor plazo, menor peso del OTM y menor costo total anualizado.',
-  '+10%': '+10% OTM: el componente strike supera a la prima en el plazo corto. JPM y BBVA son prácticamente iguales; Bogotá sigue ~0.5pp más cara.',
-  '+15%': '+15% OTM: JPM y BBVA están a menos de 0.1pp entre sí. Bogotá sigue ~0.6pp/año más cara en todos los plazos.'
+  'ATM':  'ATM: costo total = prima pura. JPM más barato; Bancolombia entre BBVA y Bogotá.',
+  '+5%':  '+5% OTM: el componente strike se amortiza con el plazo. Bancolombia y Bogotá son comparables.',
+  '+10%': '+10% OTM: JPM y BBVA convergen; Bancolombia cerca de Bogotá. El strike domina en el corto plazo.',
+  '+15%': '+15% OTM: JPM y BBVA casi idénticos; Bancolombia y Bogotá forman el grupo caro, ~0.5pp por encima.'
 };
 
 function getYr(bIdx, mIdx) { return mIdx === 0 ? BANKS[bIdx].yr1 : MATS[mIdx].yr2; }
@@ -228,7 +260,8 @@ const chart = new Chart(ctx, {
 const DL_POS = [
   { align:'top',    anchor:'end',    offset:4 },
   { align:'right',  anchor:'center', offset:6 },
-  { align:'bottom', anchor:'end',    offset:4 }
+  { align:'bottom', anchor:'end',    offset:4 },
+  { align:'left',   anchor:'center', offset:6 }
 ];
 
 function update() {
@@ -239,7 +272,13 @@ function update() {
     ? '▸ Vista: Costo Total %/año  (Prima + OTM amortizado)'
     : '▸ Vista: Sólo Prima %/año  (vol implícita cotizada)';
 
-  chart.data.datasets = banks.map((b, i) => ({
+  /* average per maturity */
+  const avgPct = MATS.map((_, mi) => {
+    const sum = banks.reduce((s,b) => s + b[pctKey][mi], 0);
+    return sum / banks.length;
+  });
+
+  const bankDatasets = banks.map((b, i) => ({
     label: b.name, data: b[pctKey],
     borderColor: b.color, backgroundColor: b.color + '14',
     borderWidth: 2.5, pointRadius: 5, pointHoverRadius: 7,
@@ -249,11 +288,34 @@ function update() {
       color: b.color,
       font: { size: 9.5, weight: '700' },
       formatter: v => v.toFixed(2) + '%',
-      backgroundColor: 'rgba(255,255,255,0.85)',
+      backgroundColor: 'rgba(255,255,255,0.88)',
       borderRadius: 3, padding: { top:1, bottom:1, left:3, right:3 }
     }
   }));
+
+  const avgDataset = {
+    label: 'Promedio',
+    data: avgPct,
+    borderColor: '#94A3B8',
+    borderDash: [6, 3],
+    borderWidth: 1.5,
+    pointRadius: 3,
+    pointHoverRadius: 5,
+    pointBackgroundColor: '#94A3B8',
+    tension: 0.25, fill: false,
+    datalabels: { display: false }
+  };
+
+  chart.data.datasets = [...bankDatasets, avgDataset];
   chart.update();
+
+  /* avg bar (top-right of chart) */
+  const avgLabel = curV === 'total' ? 'Promedio Costo Total' : 'Promedio Prima';
+  document.getElementById('avgBar').innerHTML =
+    `<span class="avg-lbl">${avgLabel}:</span>` +
+    MATS.map((m, mi) =>
+      `<div class="avg-chip">${m.label} <b>${avgPct[mi].toFixed(2)}%</b></div>`
+    ).join('');
 
   /* winner cards */
   document.getElementById('winners').innerHTML = MATS.map((m, i) => {
@@ -271,6 +333,7 @@ function update() {
   /* table headers */
   BANKS.forEach((b,i) => {
     const th = document.getElementById('th'+i);
+    if (!th) return;
     th.innerHTML = `<span style="color:${b.color}">${b.name}</span>`;
     th.style.textAlign = 'center';
   });
@@ -282,20 +345,20 @@ function update() {
     const yr = getYr(0, mi);
 
     /* section separator */
-    rows += `<tr class="sep"><td colspan="4">── ${m.label} · ${yr.toFixed(3)} años</td></tr>`;
+    rows += `<tr class="sep"><td colspan="5">── ${m.label} · ${yr.toFixed(3)} años</td></tr>`;
 
     /* ROW 1: prima nominal COP/USD (absolute) | (prima %/yr annualized) */
     const pVals = banks.map(b => b.prima_cop[mi]);
     const pMin  = Math.min(...pVals), pMax = Math.max(...pVals);
     rows += `<tr>
-      <td>Prima nominal COP×USD</td>
+      <td>Prima nominal COP</td>
       ${banks.map(b => {
         const v = b.prima_cop[mi], pct = b.prima_pct[mi];
         const best  = Math.abs(v - pMin) < 0.05;
         const worst = Math.abs(v - pMax) < 0.05 && pMax > pMin;
         return `<td class="${best ? 'best' : ''}">
-          <span class="num" style="color:${b.color}">${v.toFixed(1)}</span>
-          <span class="pct">(${pct.toFixed(2)}%/yr)</span>
+          <span class="num" style="color:${b.color}">${fmtCOP(v * curNotional)}</span>
+          <span class="pct">(${pct.toFixed(2)}%/yr · ${v.toFixed(1)}/USD)</span>
           ${best ? '<span class="badge b-hi">↓</span>' : worst ? '<span class="badge b-lo">↑</span>' : ''}
         </td>`;
       }).join('')}
@@ -308,8 +371,8 @@ function update() {
         const v = b.otm_cop[mi];
         const otmPct = (v / b.spot * 100).toFixed(2);
         return `<td>
-          <span class="num" style="opacity:.7">${v.toFixed(2)}</span>
-          <span class="pct">(${otmPct}% spot)</span>
+          <span class="num" style="opacity:.7">${fmtCOP(v * curNotional)}</span>
+          <span class="pct">(${otmPct}% · ${v.toFixed(2)}/USD)</span>
         </td>`;
       }).join('')}
     </tr>`;
@@ -327,9 +390,9 @@ function update() {
                     : worst ? '<span class="badge b-lo">↑ caro</span>'
                     :         '<span class="badge b-md">mid</span>';
         return `<td class="${best ? 'best' : ''}">
-          <span class="num" style="color:${b.color}">${v.toFixed(1)}</span>
+          <span class="num" style="color:${b.color}">${fmtCOP(v * curNotional)}</span>
           ${badge}
-          <span class="pct">(${pct.toFixed(2)}%/yr)</span>
+          <span class="pct">(${pct.toFixed(2)}%/yr · ${v.toFixed(1)}/USD)</span>
         </td>`;
       }).join('')}
     </tr>`;
